@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "639287142713",
+    "firebase_url": "https://pinaypal-backup-manager-default-rtdb.firebaseio.com",
+    "project_id": "pinaypal-backup-manager",
+    "storage_bucket": "pinaypal-backup-manager.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:639287142713:android:d36108f7fa7641958e60e8",
+        "android_client_info": {
+          "package_name": "com.pinaypal.pinaypal_remote"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAVv0tgGX5ZXmQbVLZLjCuqo9XvsY7xYxc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
