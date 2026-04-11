@@ -15,6 +15,112 @@ class FirebaseService {
     _currentUsername = username;
   }
 
+  // FCM Token methods
+  static Future<void> saveFCMToken(String username, String token) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$_firebaseUrl/users/$username/fcm_token.json'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(token),
+      );
+      if (response.statusCode == 200) {
+        print('[FirebaseService] FCM token saved for user: $username');
+      }
+    } catch (e) {
+      print('[FirebaseService] Failed to save FCM token: $e');
+    }
+  }
+
+  static Future<String?> getFCMToken(String username) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_firebaseUrl/users/$username/fcm_token.json'),
+      );
+      if (response.statusCode == 200 && response.body != 'null') {
+        return response.body.replaceAll('"', '');
+      }
+      return null;
+    } catch (e) {
+      print('[FirebaseService] Failed to get FCM token: $e');
+      return null;
+    }
+  }
+
+  static Future<String?> downloadBackupFile(
+      String username, String filename) async {
+    try {
+      print('[FirebaseService] Starting download for: $filename');
+
+      // Get PC status to find the PC's IP address
+      final pcStatus = await getPcStatus(username);
+      if (pcStatus == null) {
+        print('[FirebaseService] PC status not found');
+        return null;
+      }
+
+      print('[FirebaseService] PC status data: $pcStatus');
+
+      // Get PC IP address from status
+      final pcIp = pcStatus['ipAddress']?.toString();
+      final pcPort = pcStatus['port']?.toString() ?? '8080';
+
+      print('[FirebaseService] PC IP: $pcIp, Port: $pcPort');
+
+      if (pcIp == null) {
+        print('[FirebaseService] PC IP address not found in status');
+        return null;
+      }
+
+      // Check if IP is localhost (won't work from mobile)
+      if (pcIp == '127.0.0.1' || pcIp == 'localhost') {
+        print(
+            '[FirebaseService] ERROR: PC is using localhost IP which won\'t work from mobile device');
+        print(
+            '[FirebaseService] PC app must use actual LAN IP address (e.g., 192.168.x.x)');
+        return null;
+      }
+
+      // Construct download URL
+      final downloadUrl = 'http://$pcIp:$pcPort/download/$filename';
+      print('[FirebaseService] Download URL: $downloadUrl');
+
+      // Download file with timeout
+      final response = await http
+          .get(
+        Uri.parse(downloadUrl),
+      )
+          .timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          print('[FirebaseService] Download timeout after 30 seconds');
+          throw Exception('Request timeout');
+        },
+      );
+
+      print('[FirebaseService] Response status: ${response.statusCode}');
+      print(
+          '[FirebaseService] Response body length: ${response.bodyBytes.length}');
+
+      if (response.statusCode == 200) {
+        // Return the file content as base64 for simplicity
+        // In a real implementation, you'd save to device storage
+        final base64Content = base64Encode(response.bodyBytes);
+        print(
+            '[FirebaseService] Download successful, base64 length: ${base64Content.length}');
+        return base64Content;
+      } else {
+        print(
+            '[FirebaseService] Download failed with status: ${response.statusCode}');
+        print('[FirebaseService] Response body: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('[FirebaseService] Download failed with exception: $e');
+      print('[FirebaseService] Exception type: ${e.runtimeType}');
+      return null;
+    }
+  }
+
   // Backup command types
   static const String triggerFtpBackupCmd = 'trigger_ftp_backup';
   static const String triggerMailchimpBackupCmd = 'trigger_mailchimp_backup';
@@ -424,6 +530,36 @@ class FirebaseService {
     } catch (e) {
       print('[FirebaseService] Save health thresholds failed: $e');
       return false;
+    }
+  }
+
+  static Future<bool> saveAutoScanSettings(
+      Map<String, dynamic> autoScan) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$_firebaseUrl/users/$_currentUsername/auto_scan.json'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(autoScan),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('[FirebaseService] Save auto scan settings failed: $e');
+      return false;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getAutoScanSettings() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_firebaseUrl/users/$_currentUsername/auto_scan.json'),
+      );
+      if (response.statusCode == 200 && response.body != 'null') {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      print('[FirebaseService] Get auto scan settings failed: $e');
+      return null;
     }
   }
 
@@ -1240,51 +1376,6 @@ class FirebaseService {
       return false;
     } catch (e) {
       print('[FirebaseService] Stop backup failed: $e');
-      return false;
-    }
-  }
-
-  // Auto Scan Settings Methods
-  static Future<Map<String, dynamic>?> getAutoScanSettings() async {
-    final username = currentUsername;
-    if (username == null) return null;
-
-    try {
-      final response = await http.get(
-        Uri.parse('$_firebaseUrl/users/$username/auto_scan.json'),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data != null) {
-          return data as Map<String, dynamic>;
-        }
-      }
-      return null;
-    } catch (e) {
-      print('[FirebaseService] Get auto scan settings failed: $e');
-      return null;
-    }
-  }
-
-  static Future<bool> saveAutoScanSettings(Map<String, dynamic> settings) async {
-    final username = currentUsername;
-    if (username == null) return false;
-
-    try {
-      final response = await http.put(
-        Uri.parse('$_firebaseUrl/users/$username/auto_scan.json'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(settings),
-      );
-
-      if (response.statusCode == 200) {
-        print('[FirebaseService] Auto scan settings saved');
-        return true;
-      }
-      return false;
-    } catch (e) {
-      print('[FirebaseService] Save auto scan settings failed: $e');
       return false;
     }
   }

@@ -7,10 +7,12 @@ plugins {
 android {
     namespace 'com.pinaypal.pinaypal_remote'
     compileSdkVersion 36
-    
+    ndkVersion "28.2.13676358"
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+        coreLibraryDesugaringEnabled true
     }
 
     kotlinOptions {
@@ -45,6 +47,7 @@ flutter {
 dependencies {
     implementation platform('com.google.firebase:firebase-bom:32.7.0')
     implementation 'com.google.firebase:firebase-analytics'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
 }
 
 apply plugin: 'com.google.gms.google-services'
