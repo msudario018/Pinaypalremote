@@ -16,8 +16,8 @@ class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
   late final List<Widget> _screens = [
     const DashboardScreen(),
-    ProfileScreen(username: widget.username),
     const BackupScreen(),
+    ProfileScreen(username: widget.username),
   ];
 
   @override
@@ -26,7 +26,7 @@ class _MainScreenState extends State<MainScreen> {
       body: SafeArea(
         child: _screens[_currentIndex],
       ),
-      floatingActionButton: _currentIndex == 1
+      floatingActionButton: _currentIndex == 2
           ? FloatingActionButton(
               onPressed: () {
                 Navigator.of(context).push(
@@ -34,6 +34,7 @@ class _MainScreenState extends State<MainScreen> {
                 );
               },
               child: const Icon(Icons.settings),
+              elevation: 4,
             )
           : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
@@ -49,14 +50,14 @@ class _MainScreenState extends State<MainScreen> {
             label: 'Dashboard',
           ),
           NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-          NavigationDestination(
             icon: Icon(Icons.backup_outlined),
             selectedIcon: Icon(Icons.backup),
             label: 'Backup',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Profile',
           ),
         ],
       ),

@@ -76,7 +76,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                                 onPressed: () => _approveUser(username),
                                 tooltip: 'Approve User',
                               )
-                            else
+                            else if (role.toLowerCase() != 'admin')
                               IconButton(
                                 icon: const Icon(Icons.block),
                                 onPressed: () => _disableUser(username),
@@ -87,11 +87,12 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                               onPressed: () => _changeUserPassword(username),
                               tooltip: 'Change Password',
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.edit),
-                              onPressed: () => _changeUsername(username),
-                              tooltip: 'Change Username',
-                            ),
+                            if (role.toLowerCase() != 'admin')
+                              IconButton(
+                                icon: const Icon(Icons.edit),
+                                onPressed: () => _changeUsername(username),
+                                tooltip: 'Change Username',
+                              ),
                           ],
                         ),
                         onTap: () => _showUserDetails(user),
@@ -143,6 +144,26 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
   }
 
   Future<void> _disableUser(String username) async {
+    // Find the user to check their role
+    final user = _users.firstWhere(
+      (u) => u['Username']?.toString() == username,
+      orElse: () => {},
+    );
+    final role = user['Role']?.toString() ?? '';
+
+    // Prevent disabling admin users
+    if (role.toLowerCase() == 'admin') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cannot disable admin user'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
     final success = await FirebaseService.disableUser(username);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

@@ -33,10 +33,43 @@ class _TwoFactorLoginScreenState extends State<TwoFactorLoginScreen> {
     final savedUsername = prefs.getString('saved_username');
 
     if (keepLoggedIn && savedUsername != null) {
-      // Auto-login logic could be added here
-      // For now, just fill in the username field
-      if (mounted) {
-        _usernameController.text = savedUsername;
+      // Check if 2FA is enabled
+      final is2FAEnabled = await FirebaseService.is2FAEnabled(savedUsername);
+
+      if (is2FAEnabled) {
+        // Check if device is remembered
+        final isDeviceRemembered =
+            await FirebaseService.isDeviceRemembered(savedUsername);
+
+        if (isDeviceRemembered) {
+          // Device is remembered, auto-login and skip 2FA
+          if (mounted) {
+            FirebaseService.setCurrentUsername(savedUsername);
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (_) => MainScreen(username: savedUsername),
+              ),
+            );
+          }
+        } else {
+          // 2FA enabled but device not remembered, fill username and show 2FA
+          if (mounted) {
+            _usernameController.text = savedUsername;
+            setState(() {
+              _show2FA = true;
+            });
+          }
+        }
+      } else {
+        // 2FA not enabled, auto-login directly
+        if (mounted) {
+          FirebaseService.setCurrentUsername(savedUsername);
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => MainScreen(username: savedUsername),
+            ),
+          );
+        }
       }
     }
   }
@@ -162,12 +195,25 @@ class _TwoFactorLoginScreenState extends State<TwoFactorLoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: _show2FA ? _build2FAForm() : _buildLoginForm(),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: isDark
+                ? [const Color(0xFF3A0C57), const Color(0xFF1B052A)]
+                : [const Color(0xFF83509F), const Color(0xFF50246C)],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: _show2FA ? _build2FAForm() : _buildLoginForm(),
+            ),
           ),
         ),
       ),
@@ -175,165 +221,295 @@ class _TwoFactorLoginScreenState extends State<TwoFactorLoginScreen> {
   }
 
   Widget _buildLoginForm() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        // App logo
-        Image.asset(
-          'assets/app_icon.png',
-          width: 120,
-          height: 120,
-        ),
-        const SizedBox(height: 32),
-        Text(
-          'PinayPal Remote',
-          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.bold,
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Card(
+      elevation: 8,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+      ),
+      color: isDark
+          ? const Color(0xFF3A0C57).withValues(alpha: 0.9)
+          : Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // App logo
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: const Color(0xFF83509F).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(20),
               ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Secure Backup Management',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.6),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Image.asset(
+                  'assets/app_icon.png',
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Icon(
+                      Icons.backup,
+                      size: 40,
+                      color: Color(0xFF83509F),
+                    );
+                  },
+                ),
               ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'PinayPal',
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : const Color(0xFF83509F),
+                  ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Backup Manager',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: isDark ? Colors.white70 : Colors.grey[600],
+                  ),
+            ),
+            const SizedBox(height: 32),
+            TextField(
+              controller: _usernameController,
+              decoration: InputDecoration(
+                labelText: 'Username',
+                hintText: 'Enter your username',
+                prefixIcon: const Icon(Icons.person_outline),
+                filled: true,
+                fillColor: isDark
+                    ? const Color(0xFF50246C).withValues(alpha: 0.5)
+                    : Colors.grey[100],
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _passwordController,
+              decoration: InputDecoration(
+                labelText: 'Password',
+                hintText: 'Enter your password',
+                prefixIcon: const Icon(Icons.lock_outline),
+                filled: true,
+                fillColor: isDark
+                    ? const Color(0xFF50246C).withValues(alpha: 0.5)
+                    : Colors.grey[100],
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              obscureText: true,
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Checkbox(
+                  value: _keepMeLoggedIn,
+                  onChanged: (value) {
+                    setState(() => _keepMeLoggedIn = value ?? false);
+                  },
+                  fillColor: WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return const Color(0xFF83509F);
+                    }
+                    return null;
+                  }),
+                ),
+                const Text('Keep me logged in'),
+              ],
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: FilledButton(
+                onPressed: _isLoading ? null : _login,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF83509F),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 24,
+                        width: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 3,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : const Text(
+                        'Login',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w600),
+                      ),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 48),
-        TextField(
-          controller: _usernameController,
-          decoration: const InputDecoration(
-            labelText: 'Username',
-            hintText: 'Enter your username',
-            prefixIcon: Icon(Icons.person_outline),
-          ),
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _passwordController,
-          decoration: const InputDecoration(
-            labelText: 'Password',
-            hintText: 'Enter your password',
-            prefixIcon: Icon(Icons.lock_outline),
-          ),
-          obscureText: true,
-        ),
-        const SizedBox(height: 24),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton(
-            onPressed: _isLoading ? null : _login,
-            child: _isLoading
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Login'),
-          ),
-        ),
-      ],
+      ),
     );
   }
 
   Widget _build2FAForm() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          width: 100,
-          height: 100,
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primaryContainer,
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Icon(
-            Icons.security,
-            size: 56,
-            color: Theme.of(context).colorScheme.primary,
-          ),
-        ),
-        const SizedBox(height: 32),
-        Text(
-          'Two-Factor Authentication',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Enter your 2FA code',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.6),
-              ),
-        ),
-        const SizedBox(height: 48),
-        Row(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Card(
+      elevation: 8,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+      ),
+      color: isDark
+          ? const Color(0xFF3A0C57).withValues(alpha: 0.9)
+          : Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Checkbox(
-              value: _rememberDevice,
-              onChanged: (value) {
-                setState(() => _rememberDevice = value ?? false);
-              },
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: const Color(0xFF83509F).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(
+                Icons.security,
+                size: 40,
+                color: Color(0xFF83509F),
+              ),
             ),
-            const Text('Remember this device for 30 days'),
-          ],
-        ),
-        const SizedBox(height: 24),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: List.generate(6, (index) {
-            return SizedBox(
-              width: 50,
-              height: 60,
-              child: TextField(
-                controller: _codeControllers[index],
-                decoration: InputDecoration(
-                  counterText: '',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
+            const SizedBox(height: 24),
+            Text(
+              'Two-Factor Authentication',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : const Color(0xFF83509F),
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Enter your 2FA code',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: isDark ? Colors.white70 : Colors.grey[600],
+                  ),
+            ),
+            const SizedBox(height: 32),
+            Row(
+              children: [
+                Checkbox(
+                  value: _rememberDevice,
+                  onChanged: (value) {
+                    setState(() => _rememberDevice = value ?? false);
+                  },
+                  fillColor: WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return const Color(0xFF83509F);
+                    }
+                    return null;
+                  }),
+                ),
+                const Expanded(
+                  child: Text('Remember this device for 30 days'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: List.generate(6, (index) {
+                return SizedBox(
+                  width: 50,
+                  height: 60,
+                  child: TextField(
+                    controller: _codeControllers[index],
+                    decoration: InputDecoration(
+                      counterText: '',
+                      filled: true,
+                      fillColor: isDark
+                          ? const Color(0xFF50246C).withValues(alpha: 0.5)
+                          : Colors.grey[100],
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                          color: Color(0xFF83509F),
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    maxLength: 1,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    onChanged: (value) {
+                      if (value.isNotEmpty && index < 5) {
+                        FocusScope.of(context).nextFocus();
+                      }
+                    },
+                  ),
+                );
+              }),
+            ),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: FilledButton(
+                onPressed: _isLoading ? null : _verify2FA,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF83509F),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                keyboardType: TextInputType.number,
-                textAlign: TextAlign.center,
-                maxLength: 1,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                onChanged: (value) {
-                  if (value.isNotEmpty && index < 5) {
-                    FocusScope.of(context).nextFocus();
-                  }
-                },
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 24,
+                        width: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 3,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : const Text(
+                        'Verify',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w600),
+                      ),
               ),
-            );
-          }),
+            ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: () {
+                setState(() => _show2FA = false);
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF83509F),
+              ),
+              child: const Text('Back to Login'),
+            ),
+          ],
         ),
-        const SizedBox(height: 32),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton(
-            onPressed: _isLoading ? null : _verify2FA,
-            child: _isLoading
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Verify'),
-          ),
-        ),
-        const SizedBox(height: 16),
-        TextButton(
-          onPressed: () {
-            setState(() => _show2FA = false);
-          },
-          child: const Text('Back to Login'),
-        ),
-      ],
+      ),
     );
   }
 }

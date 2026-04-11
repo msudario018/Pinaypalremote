@@ -15,6 +15,15 @@ class FirebaseService {
     _currentUsername = username;
   }
 
+  // Backup command types
+  static const String triggerFtpBackupCmd = 'trigger_ftp_backup';
+  static const String triggerMailchimpBackupCmd = 'trigger_mailchimp_backup';
+  static const String triggerSqlBackupCmd = 'trigger_sql_backup';
+  static const String pauseBackupsCmd = 'pause_backups';
+  static const String resumeBackupsCmd = 'resume_backups';
+  static const String syncBackupFilesCmd = 'sync_backup_files';
+  static const String deleteBackupFileCmd = 'delete_backup_file';
+
   static Future<bool> initialize() async {
     try {
       final response = await http.get(Uri.parse('$_firebaseUrl.json'));
@@ -38,6 +47,8 @@ class FirebaseService {
 
       print('[FirebaseService] Response status: ${response.statusCode}');
 
+      bool loginSuccess = false;
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         print('[FirebaseService] User data: $data');
@@ -51,7 +62,7 @@ class FirebaseService {
             final computedHash = _hashPassword(password, salt);
             if (computedHash == storedPasswordHash) {
               setCurrentUsername(username);
-              return true;
+              loginSuccess = true;
             } else {
               print('[FirebaseService] Password hash mismatch');
             }
@@ -62,7 +73,7 @@ class FirebaseService {
             print(
                 '[FirebaseService] User exists without password hash, allowing login for migration');
             setCurrentUsername(username);
-            return true;
+            loginSuccess = true;
           }
         } else {
           print('[FirebaseService] User data is null');
@@ -71,9 +82,25 @@ class FirebaseService {
         print(
             '[FirebaseService] User not found (status: ${response.statusCode})');
       }
-      return false;
+
+      // Record login history
+      await recordLoginHistory(
+        username: username,
+        success: loginSuccess,
+        deviceInfo: 'Flutter Mobile App',
+      );
+
+      return loginSuccess;
     } catch (e) {
       print('[FirebaseService] Login failed: $e');
+
+      // Record failed login attempt
+      await recordLoginHistory(
+        username: username,
+        success: false,
+        deviceInfo: 'Flutter Mobile App',
+      );
+
       return false;
     }
   }
@@ -285,6 +312,232 @@ class FirebaseService {
     }
   }
 
+  static Future<bool> getBackupStatus(String username) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_firebaseUrl/users/$username/backup_status.json'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data != null;
+      }
+      return false;
+    } catch (e) {
+      print('[FirebaseService] Get backup status failed: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> sendBackupCommand(String commandType,
+      {String? data}) async {
+    if (_currentUsername == null) return false;
+
+    try {
+      final commandData = {
+        'type': commandType,
+        'status': 'pending',
+        'timestamp': DateTime.now().toIso8601String(),
+        if (data != null) 'data': data,
+      };
+
+      final response = await http.post(
+        Uri.parse('$_firebaseUrl/users/$_currentUsername/commands.json'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(commandData),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print('[FirebaseService] Send backup command failed: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> triggerFtpBackup() async {
+    return await sendBackupCommand(triggerFtpBackupCmd);
+  }
+
+  static Future<bool> triggerMailchimpBackup() async {
+    return await sendBackupCommand(triggerMailchimpBackupCmd);
+  }
+
+  static Future<bool> triggerSqlBackup() async {
+    return await sendBackupCommand(triggerSqlBackupCmd);
+  }
+
+  static Future<bool> pauseBackups() async {
+    return await sendBackupCommand(pauseBackupsCmd);
+  }
+
+  static Future<bool> resumeBackups() async {
+    return await sendBackupCommand(resumeBackupsCmd);
+  }
+
+  static Future<bool> syncBackupFiles() async {
+    return await sendBackupCommand(syncBackupFilesCmd);
+  }
+
+  static Future<bool> deleteBackupFile(String filePath) async {
+    return await sendBackupCommand(deleteBackupFileCmd, data: filePath);
+  }
+
+  static Future<bool> saveBackupSchedule(Map<String, dynamic> schedule) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$_firebaseUrl/users/$_currentUsername/backup_schedule.json'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(schedule),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('[FirebaseService] Save backup schedule failed: $e');
+      return false;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getBackupSchedule() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_firebaseUrl/users/$_currentUsername/backup_schedule.json'),
+      );
+      if (response.statusCode == 200 && response.body != 'null') {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      print('[FirebaseService] Get backup schedule failed: $e');
+      return null;
+    }
+  }
+
+  static Future<bool> saveHealthThresholds(
+      Map<String, dynamic> thresholds) async {
+    try {
+      final response = await http.put(
+        Uri.parse(
+            '$_firebaseUrl/users/$_currentUsername/health_thresholds.json'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(thresholds),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('[FirebaseService] Save health thresholds failed: $e');
+      return false;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getHealthThresholds() async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+            '$_firebaseUrl/users/$_currentUsername/health_thresholds.json'),
+      );
+      if (response.statusCode == 200 && response.body != 'null') {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      print('[FirebaseService] Get health thresholds failed: $e');
+      return null;
+    }
+  }
+
+  static Future<bool> isPcAppOnline(String username) async {
+    try {
+      // Check connection status at /users/{username}/connection
+      final response = await http.get(
+        Uri.parse('$_firebaseUrl/users/$username/connection.json'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data != null) {
+          final status = data['status']?.toString();
+          final lastSeenStr = data['lastSeen']?.toString();
+
+          if (status == 'online' && lastSeenStr != null) {
+            final lastSeen = DateTime.parse(lastSeenStr);
+            final now = DateTime.now();
+            final difference = now.difference(lastSeen);
+
+            // Consider PC online if status is 'online' and lastSeen within 30 seconds
+            return difference.inSeconds < 30;
+          }
+        }
+      }
+
+      // Fallback: check LastUpdated in user data
+      final userData = await getUserData(username);
+      if (userData == null) return false;
+
+      final lastUpdatedStr = userData['LastUpdated']?.toString();
+      if (lastUpdatedStr == null) return false;
+
+      final lastUpdated = DateTime.parse(lastUpdatedStr);
+      final now = DateTime.now();
+      final difference = now.difference(lastUpdated);
+
+      // Consider PC online if updated within the last 15 minutes
+      return difference.inMinutes < 15;
+    } catch (e) {
+      print('[FirebaseService] Check PC online status failed: $e');
+      return false;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getPcStatus(String username) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_firebaseUrl/users/$username/connection.json'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data != null) {
+          return data as Map<String, dynamic>;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('[FirebaseService] Get PC status failed: $e');
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getBackupHealth(String username) async {
+    try {
+      // Read from system_status which contains last backup times
+      final response = await http.get(
+        Uri.parse('$_firebaseUrl/users/$username/system_status.json'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data != null) {
+          // Transform system_status data to match expected health structure
+          final systemData = data as Map<String, dynamic>;
+          return {
+            'website':
+                systemData['lastFtpBackup'] != 'Never' ? 'ok' : 'unknown',
+            'sql': systemData['lastSqlBackup'] != 'Never' ? 'ok' : 'unknown',
+            'mailchimp':
+                systemData['lastMcBackup'] != 'Never' ? 'ok' : 'unknown',
+            'website_last_backup':
+                systemData['lastFtpBackup']?.toString() ?? '',
+            'sql_last_backup': systemData['lastSqlBackup']?.toString() ?? '',
+            'mailchimp_last_backup':
+                systemData['lastMcBackup']?.toString() ?? '',
+          };
+        }
+      }
+      return null;
+    } catch (e) {
+      print('[FirebaseService] Get backup health failed: $e');
+      return null;
+    }
+  }
+
   static Future<List<Map<String, dynamic>>> getAllUsers() async {
     try {
       final response = await http.get(
@@ -420,7 +673,7 @@ class FirebaseService {
         body: jsonEncode({
           'secret': secret,
           'backupCodes': backupCodes,
-          'isEnabled': false,
+          'IsEnabled': false,
         }),
       );
 
@@ -474,6 +727,43 @@ class FirebaseService {
       return response.statusCode == 200;
     } catch (e) {
       print('[FirebaseService] Update 2FA secret failed: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> recordLoginHistory({
+    required String username,
+    required bool success,
+    String? deviceInfo,
+    String? ipAddress,
+    String? userAgent,
+  }) async {
+    try {
+      print('[FirebaseService] Recording login history for user: $username');
+
+      final timestamp = DateTime.now().toIso8601String();
+      final deviceId = await _getDeviceId();
+
+      final loginData = {
+        'success': success,
+        'deviceId': deviceId,
+        'deviceInfo': deviceInfo ?? 'Unknown Device',
+        'ipAddress': ipAddress ?? 'Unknown',
+        'userAgent': userAgent ?? 'Unknown',
+        'timestamp': timestamp,
+      };
+
+      final response = await http.put(
+        Uri.parse('$_firebaseUrl/login_history/$username/$timestamp.json'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(loginData),
+      );
+
+      print(
+          '[FirebaseService] Record login history response status: ${response.statusCode}');
+      return response.statusCode == 200;
+    } catch (e) {
+      print('[FirebaseService] Record login history failed: $e');
       return false;
     }
   }
@@ -806,6 +1096,27 @@ class FirebaseService {
     }
   }
 
+  static Future<String?> getUserRole(String username) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_firebaseUrl/users/$username.json'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data != null) {
+          final role = data['Role']?.toString();
+          print('[FirebaseService] User role: $role');
+          return role;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('[FirebaseService] Get user role failed: $e');
+      return null;
+    }
+  }
+
   static Future<bool> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('keep_me_logged_in');
@@ -823,5 +1134,232 @@ class FirebaseService {
   static String _generateSalt() {
     final random = DateTime.now().millisecondsSinceEpoch.toString();
     return base64Encode(utf8.encode(random));
+  }
+
+  // Backup Management Methods
+  static Future<List<Map<String, dynamic>>> getBackupHistory(
+      String username) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_firebaseUrl/users/$username/backups.json'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data != null) {
+          if (data is List) {
+            return data.map((e) => e as Map<String, dynamic>).toList();
+          } else if (data is Map) {
+            return data.entries
+                .map((e) => e.value as Map<String, dynamic>)
+                .toList();
+          }
+        }
+      }
+      return [];
+    } catch (e) {
+      print('[FirebaseService] Get backup history failed: $e');
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getStorageUsage(String username) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_firebaseUrl/users/$username/storage.json'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data != null) {
+          return data as Map<String, dynamic>;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('[FirebaseService] Get storage usage failed: $e');
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getBackupProgress(
+      String username) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_firebaseUrl/users/$username/backup_progress.json'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data != null) {
+          return data as Map<String, dynamic>;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('[FirebaseService] Get backup progress failed: $e');
+      return null;
+    }
+  }
+
+  static Future<bool> triggerBackup(String username) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_firebaseUrl/users/$username/trigger_backup.json'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'timestamp': DateTime.now().toIso8601String(),
+          'triggeredBy': 'mobile_app',
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print('[FirebaseService] Trigger backup failed: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> stopBackup(String username) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_firebaseUrl/users/$username/stop_backup.json'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'timestamp': DateTime.now().toIso8601String(),
+          'triggeredBy': 'mobile_app',
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print('[FirebaseService] Stop backup failed: $e');
+      return false;
+    }
+  }
+
+  // Auto Scan Settings Methods
+  static Future<Map<String, dynamic>?> getAutoScanSettings() async {
+    final username = currentUsername;
+    if (username == null) return null;
+
+    try {
+      final response = await http.get(
+        Uri.parse('$_firebaseUrl/users/$username/auto_scan.json'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data != null) {
+          return data as Map<String, dynamic>;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('[FirebaseService] Get auto scan settings failed: $e');
+      return null;
+    }
+  }
+
+  static Future<bool> saveAutoScanSettings(Map<String, dynamic> settings) async {
+    final username = currentUsername;
+    if (username == null) return false;
+
+    try {
+      final response = await http.put(
+        Uri.parse('$_firebaseUrl/users/$username/auto_scan.json'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(settings),
+      );
+
+      if (response.statusCode == 200) {
+        print('[FirebaseService] Auto scan settings saved');
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print('[FirebaseService] Save auto scan settings failed: $e');
+      return false;
+    }
+  }
+
+  // System Monitoring Methods
+  static Future<Map<String, dynamic>?> getSystemStats(String username) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_firebaseUrl/users/$username/system_stats.json'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data != null) {
+          return data as Map<String, dynamic>;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('[FirebaseService] Get system stats failed: $e');
+      return null;
+    }
+  }
+
+  // Activity Feed Methods
+  static Future<List<Map<String, dynamic>>> getActivityLog(
+      String username) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_firebaseUrl/users/$username/activity.json'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data != null) {
+          if (data is List) {
+            return data.map((e) => e as Map<String, dynamic>).toList();
+          } else if (data is Map) {
+            return data.entries
+                .map((e) => e.value as Map<String, dynamic>)
+                .toList();
+          }
+        }
+      }
+      return [];
+    } catch (e) {
+      print('[FirebaseService] Get activity log failed: $e');
+      return [];
+    }
+  }
+
+  // File Browser Methods
+  static Future<List<Map<String, dynamic>>> getBackupFiles(
+      String username) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_firebaseUrl/users/$username/backup_files.json'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data != null) {
+          if (data is List) {
+            return data.map((e) => e as Map<String, dynamic>).toList();
+          } else if (data is Map) {
+            return data.entries
+                .map((e) => e.value as Map<String, dynamic>)
+                .toList();
+          }
+        }
+      }
+      return [];
+    } catch (e) {
+      print('[FirebaseService] Get backup files failed: $e');
+      return [];
+    }
   }
 }

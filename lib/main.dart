@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'screens/two_factor_login_screen.dart';
+import 'screens/splash_screen.dart';
 import 'utils/app_theme.dart';
 import 'utils/theme_mode_inherited.dart';
 import 'services/firebase_service.dart';
@@ -56,7 +56,7 @@ class _PinayPalRemoteAppState extends State<PinayPalRemoteApp> {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: _themeMode,
-      home: const TwoFactorLoginScreen(),
+      home: const SplashScreen(),
       builder: (context, child) {
         return ThemeModeInherited(
           themeMode: _themeMode,

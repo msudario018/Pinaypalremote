@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import '../services/firebase_service.dart';
 
@@ -132,141 +133,344 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       appBar: AppBar(
-          title: Text(_is2FAEnabled
-              ? 'Manage Two-Factor Authentication'
-              : 'Setup Two-Factor Authentication')),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: ListView(
-                children: [
-                  if (_is2FAEnabled) ...[
-                    Card(
+        title: Text(_is2FAEnabled
+            ? 'Manage Two-Factor Authentication'
+            : 'Setup Two-Factor Authentication'),
+        elevation: 0,
+      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: isDark
+                ? [const Color(0xFF3A0C57), const Color(0xFF1B052A)]
+                : [const Color(0xFF83509F), const Color(0xFF50246C)],
+          ),
+        ),
+        child: SafeArea(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Card(
+                      elevation: 8,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      color: isDark
+                          ? const Color(0xFF3A0C57).withValues(alpha: 0.9)
+                          : Colors.white,
                       child: Padding(
-                        padding: const EdgeInsets.all(16.0),
+                        padding: const EdgeInsets.all(20.0),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Text(
-                              'Two-Factor Authentication is Enabled',
+                            Container(
+                              width: 60,
+                              height: 60,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF83509F)
+                                    .withValues(alpha: 0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.security,
+                                size: 32,
+                                color: Color(0xFF83509F),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              _is2FAEnabled
+                                  ? 'Two-Factor Authentication Enabled'
+                                  : 'Setup Two-Factor Authentication',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleLarge
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark
+                                        ? Colors.white
+                                        : const Color(0xFF83509F),
+                                  ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _is2FAEnabled
+                                  ? 'Your account is protected with 2FA. You can disable it below.'
+                                  : 'Scan the QR code with your authenticator app and save your backup codes.',
                               style: TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 16),
+                                color:
+                                    isDark ? Colors.white70 : Colors.grey[600],
+                                fontSize: 13,
+                              ),
+                              textAlign: TextAlign.center,
                             ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Your account is protected with 2FA. You can disable it below.',
-                              style: TextStyle(color: Colors.grey),
-                            ),
+                            const SizedBox(height: 16),
+                            if (_is2FAEnabled) ...[
+                              Card(
+                                color: isDark
+                                    ? const Color(0xFF2D1B3E)
+                                    : Colors.grey[50],
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12.0),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(6),
+                                            decoration: BoxDecoration(
+                                              color: Colors.green
+                                                  .withValues(alpha: 0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                            ),
+                                            child: const Icon(
+                                                Icons.check_circle,
+                                                color: Colors.green,
+                                                size: 18),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          const Text(
+                                            'Status: Enabled',
+                                            style: TextStyle(
+                                                fontWeight: FontWeight.bold),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      const Text(
+                                        'Backup Codes',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: isDark
+                                              ? const Color(0xFF1B052A)
+                                              : Colors.grey[200],
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          _backupCodes?.join('\n') ??
+                                              'Loading...',
+                                          style: const TextStyle(
+                                              fontFamily: 'monospace',
+                                              fontSize: 11),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      const Text(
+                                        'Save these codes in a safe place.',
+                                        style: TextStyle(
+                                            fontSize: 11, color: Colors.grey),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              SizedBox(
+                                width: double.infinity,
+                                height: 48,
+                                child: FilledButton(
+                                  onPressed: _disable2FA,
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: Colors.red,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  child: const Text('Disable 2FA'),
+                                ),
+                              ),
+                            ] else ...[
+                              Card(
+                                color: isDark
+                                    ? const Color(0xFF2D1B3E)
+                                    : Colors.grey[50],
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12.0),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          const Text(
+                                            'Secret Key',
+                                            style: TextStyle(
+                                                fontWeight: FontWeight.bold),
+                                          ),
+                                          const Spacer(),
+                                          IconButton(
+                                            icon: const Icon(Icons.copy,
+                                                size: 18),
+                                            onPressed: _secretKey != null
+                                                ? () {
+                                                    Clipboard.setData(
+                                                        ClipboardData(
+                                                            text: _secretKey!));
+                                                    ScaffoldMessenger.of(
+                                                            context)
+                                                        .showSnackBar(
+                                                      const SnackBar(
+                                                        content: Text(
+                                                            'Secret key copied to clipboard'),
+                                                        duration: Duration(
+                                                            seconds: 2),
+                                                      ),
+                                                    );
+                                                  }
+                                                : null,
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Container(
+                                        width: double.infinity,
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: isDark
+                                              ? const Color(0xFF1B052A)
+                                              : Colors.grey[200],
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                        ),
+                                        child: SelectableText(
+                                          _secretKey ?? 'Loading...',
+                                          style: const TextStyle(
+                                              fontFamily: 'monospace',
+                                              fontSize: 12),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      const Text(
+                                        'Enter this key in your authenticator app',
+                                        style: TextStyle(
+                                            fontSize: 11, color: Colors.grey),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Card(
+                                color: isDark
+                                    ? const Color(0xFF2D1B3E)
+                                    : Colors.grey[50],
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12.0),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          const Text(
+                                            'Backup Codes',
+                                            style: TextStyle(
+                                                fontWeight: FontWeight.bold),
+                                          ),
+                                          const Spacer(),
+                                          IconButton(
+                                            icon: const Icon(Icons.copy,
+                                                size: 18),
+                                            onPressed: _backupCodes != null
+                                                ? () {
+                                                    Clipboard.setData(
+                                                        ClipboardData(
+                                                            text: _backupCodes!
+                                                                .join('\n')));
+                                                    ScaffoldMessenger.of(
+                                                            context)
+                                                        .showSnackBar(
+                                                      const SnackBar(
+                                                        content: Text(
+                                                            'Backup codes copied to clipboard'),
+                                                        duration: Duration(
+                                                            seconds: 2),
+                                                      ),
+                                                    );
+                                                  }
+                                                : null,
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Container(
+                                        width: double.infinity,
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: isDark
+                                              ? const Color(0xFF1B052A)
+                                              : Colors.grey[200],
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          _backupCodes?.join('\n') ??
+                                              'Loading...',
+                                          style: const TextStyle(
+                                              fontFamily: 'monospace',
+                                              fontSize: 12),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      const Text(
+                                        'Save these codes in a safe place.',
+                                        style: TextStyle(
+                                            fontSize: 11, color: Colors.grey),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              SizedBox(
+                                width: double.infinity,
+                                height: 48,
+                                child: FilledButton(
+                                  onPressed: _enable2FA,
+                                  style: FilledButton.styleFrom(
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  child: const Text('Enable 2FA'),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              TextButton(
+                                onPressed: _restorePCSecret,
+                                child: const Text('Restore PC App Secret'),
+                              ),
+                            ],
                           ],
                         ),
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Backup Codes',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _backupCodes?.join('\n') ?? 'Loading...',
-                              style: const TextStyle(fontFamily: 'monospace'),
-                            ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Save these codes in a safe place. You can use them to login if you lose access to your authenticator.',
-                              style:
-                                  TextStyle(fontSize: 12, color: Colors.grey),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: _disable2FA,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: Colors.red,
-                        ),
-                        child: const Text('Disable 2FA'),
-                      ),
-                    ),
-                  ] else ...[
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Secret Key',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 8),
-                            SelectableText(_secretKey ?? 'Loading...'),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Scan this QR code with your authenticator app',
-                              style:
-                                  TextStyle(fontSize: 12, color: Colors.grey),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Backup Codes',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _backupCodes?.join('\n') ?? 'Loading...',
-                              style: const TextStyle(fontFamily: 'monospace'),
-                            ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Save these codes in a safe place. You can use them to login if you lose access to your authenticator.',
-                              style:
-                                  TextStyle(fontSize: 12, color: Colors.grey),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: _enable2FA,
-                        child: const Text('Enable 2FA'),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextButton(
-                      onPressed: _restorePCSecret,
-                      child: const Text('Restore PC App Secret'),
-                    ),
-                  ],
-                ],
-              ),
-            ),
+                  ),
+                ),
+        ),
+      ),
     );
   }
 }

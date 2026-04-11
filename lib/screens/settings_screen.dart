@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../services/firebase_service.dart';
 import '../utils/theme_mode_inherited.dart';
 import 'two_factor_login_screen.dart';
-import 'two_factor_setup_screen.dart';
 import 'user_management_screen.dart';
 import 'invite_codes_screen.dart';
 
@@ -15,9 +14,9 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _isDarkMode = false;
-  bool _is2FAEnabled = false;
   String? _username;
-  Map<String, dynamic>? _userData;
+  String? _userRole;
+  bool _isLoadingRole = true;
 
   @override
   void initState() {
@@ -35,17 +34,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadSettings() async {
     _username = FirebaseService.currentUsername;
     if (_username != null) {
-      final enabled = await FirebaseService.is2FAEnabled(_username!);
-      final userData = await FirebaseService.getUserData(_username!);
-      print('[SettingsScreen] User data: $userData');
-      print('[SettingsScreen] Role: ${userData?['Role']}');
-      print('[SettingsScreen] role (lowercase): ${userData?['role']}');
+      setState(() {
+        _isLoadingRole = true;
+      });
+      // Only fetch user role for admin check
+      final role = await FirebaseService.getUserRole(_username!);
+      print('[SettingsScreen] Role: $role');
       if (mounted) {
         setState(() {
-          _is2FAEnabled = enabled;
-          _userData = userData;
+          _userRole = role;
+          _isLoadingRole = false;
         });
       }
+    } else {
+      setState(() {
+        _isLoadingRole = false;
+      });
     }
   }
 
@@ -54,18 +58,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
+        elevation: 0,
       ),
       body: ListView(
+        padding: const EdgeInsets.all(16),
         children: [
+          // General Settings Card
           Card(
-            margin: const EdgeInsets.all(16),
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
             child: Column(
               children: [
                 ListTile(
-                  leading: const Icon(Icons.brightness_6_outlined),
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF83509F).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.brightness_6_outlined,
+                      color: Color(0xFF83509F),
+                    ),
+                  ),
                   title: const Text('Dark Mode'),
                   trailing: Switch(
                     value: _isDarkMode,
+                    activeThumbColor: const Color(0xFF83509F),
                     onChanged: (value) {
                       setState(() => _isDarkMode = value);
                       ThemeModeInherited.of(context).setThemeMode(
@@ -76,7 +97,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const Divider(height: 1),
                 ListTile(
-                  leading: const Icon(Icons.notifications_outlined),
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF83509F).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.notifications_outlined,
+                      color: Color(0xFF83509F),
+                    ),
+                  ),
                   title: const Text('Notifications'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
@@ -88,7 +119,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const Divider(height: 1),
                 ListTile(
-                  leading: const Icon(Icons.language),
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF83509F).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.language,
+                      color: Color(0xFF83509F),
+                    ),
+                  ),
                   title: const Text('Language'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
@@ -100,19 +141,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const Divider(height: 1),
                 ListTile(
-                  leading: const Icon(Icons.history),
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF83509F).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.history,
+                      color: Color(0xFF83509F),
+                    ),
+                  ),
                   title: const Text('Changelogs'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
                     _showChangelogDialog(context);
                   },
                 ),
-                if (_userData?['Role'] == 'Admin' ||
-                    _userData?['role'] == 'admin' ||
-                    _userData?['role'] == 'Admin') ...[
+                if (_isLoadingRole) ...[
+                  const Divider(height: 1),
+                  const Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  ),
+                ] else if (_userRole == 'Admin' || _userRole == 'admin') ...[
                   const Divider(height: 1),
                   ListTile(
-                    leading: const Icon(Icons.people),
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF83509F).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.people,
+                        color: Color(0xFF83509F),
+                      ),
+                    ),
                     title: const Text('User Management'),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () {
@@ -128,7 +199,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const Divider(height: 1),
                   ListTile(
-                    leading: const Icon(Icons.card_giftcard),
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF83509F).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.card_giftcard,
+                        color: Color(0xFF83509F),
+                      ),
+                    ),
                     title: const Text('Invite Codes'),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () {
@@ -143,59 +224,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 16),
+          // About Card
           Card(
-            margin: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.security),
-                  title: const Text('Two-Factor Authentication'),
-                  subtitle: Text(_is2FAEnabled ? 'Enabled' : 'Disabled'),
-                  trailing: Switch(
-                    value: _is2FAEnabled,
-                    onChanged: (value) async {
-                      if (_username != null) {
-                        if (value) {
-                          // Navigate to 2FA setup
-                          Navigator.of(context)
-                              .push(
-                                MaterialPageRoute(
-                                  builder: (_) => TwoFactorSetupScreen(
-                                      username: _username!),
-                                ),
-                              )
-                              .then((_) => _loadSettings());
-                        } else {
-                          // Disable 2FA
-                          final success =
-                              await FirebaseService.disable2FA(_username!);
-                          if (mounted) {
-                            if (success) {
-                              setState(() => _is2FAEnabled = false);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('2FA disabled')),
-                              );
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content: Text('Failed to disable 2FA')),
-                              );
-                            }
-                          }
-                        }
-                      }
-                    },
-                  ),
-                ),
-              ],
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
             ),
-          ),
-          Card(
-            margin: const EdgeInsets.all(16),
             child: Column(
               children: [
                 ListTile(
-                  leading: const Icon(Icons.info_outline),
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF83509F).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.info_outline,
+                      color: Color(0xFF83509F),
+                    ),
+                  ),
                   title: const Text('About'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
@@ -244,6 +293,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
+              Text(
+                'Version 1.1.0',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              Text('• Added copy buttons for secret key and backup codes'),
+              Text('• Optimized two-factor setup screen for mobile devices'),
+              Text('• Fixed backup codes layout width and alignment'),
+              Text('• Added login history tracking for PC app integration'),
+              Text('• Fixed loading delay for admin buttons in settings'),
+              Text('• Switched account info and settings order in profile'),
+              Text('• Prevented admin users from being disabled'),
+              Text('• Fixed user role fetching in settings screen'),
+              SizedBox(height: 16),
               Text(
                 'Version 1.0.0',
                 style: TextStyle(fontWeight: FontWeight.bold),

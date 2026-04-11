@@ -29,33 +29,77 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadUserData() async {
-    final userData = await FirebaseService.getUserData(widget.username);
-    final avatarData = await FirebaseService.getUserAvatar(widget.username);
-    final is2FAEnabled = await FirebaseService.is2FAEnabled(widget.username);
+    // Use FirebaseService.currentUsername as fallback if widget.username is empty
+    final username = widget.username.isEmpty
+        ? FirebaseService.currentUsername
+        : widget.username;
 
-    // Debug: Print user data to see what's being retrieved
-    print('[ProfileScreen] User data for ${widget.username}: $userData');
-    print('[ProfileScreen] 2FA enabled status: $is2FAEnabled');
+    if (username == null || username.isEmpty) {
+      print('[ProfileScreen] No username available');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+      return;
+    }
 
-    if (mounted) {
-      setState(() {
-        _userData = userData ??
-            {
-              'Username': widget.username,
-              'Role': 'User',
-              'Status': 'Active',
-              'CreatedAt': DateTime.now().toIso8601String(),
-            };
-        // Add 2FA status to user data for display
-        if (_userData != null) {
-          _userData!['is2FAEnabled'] = is2FAEnabled;
-          _userData!['Is2FAEnabled'] = is2FAEnabled;
+    try {
+      // Make all Firebase calls in parallel
+      final results = await Future.wait([
+        FirebaseService.getUserData(username),
+        FirebaseService.getUserAvatar(username),
+        FirebaseService.is2FAEnabled(username),
+      ]);
+
+      final userData = results[0] as Map<String, dynamic>?;
+      final avatarData = results[1] as String?;
+      final is2FAEnabled = results[2] as bool;
+
+      // Debug: Print user data to see what's being retrieved
+      print('[ProfileScreen] User data for $username: $userData');
+      print('[ProfileScreen] 2FA enabled status: $is2FAEnabled');
+
+      if (mounted) {
+        setState(() {
+          _userData = userData ??
+              {
+                'Username': username,
+                'Role': 'User',
+                'Status': 'Active',
+                'CreatedAt': DateTime.now().toIso8601String(),
+              };
+          // Add 2FA status to user data for display
+          if (_userData != null) {
+            _userData!['is2FAEnabled'] = is2FAEnabled;
+            _userData!['Is2FAEnabled'] = is2FAEnabled;
+          }
+          if (avatarData != null) {
+            _avatarImage = base64Decode(avatarData);
+          }
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('[ProfileScreen] Error loading user data: $e');
+      if (mounted) {
+        setState(() {
+          _userData = {
+            'Username': username,
+            'Role': 'User',
+            'Status': 'Active',
+            'CreatedAt': DateTime.now().toIso8601String(),
+            'is2FAEnabled': false,
+            'Is2FAEnabled': false,
+          };
+          _isLoading = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error loading profile data: $e')),
+          );
         }
-        if (avatarData != null) {
-          _avatarImage = base64Decode(avatarData);
-        }
-        _isLoading = false;
-      });
+      }
     }
   }
 
@@ -230,10 +274,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           // Profile Header Card
-          Card.filled(
-            color: cs.primaryContainer.withValues(alpha: 0.3),
+          Card(
+            elevation: 4,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
+            color: const Color(0xFF83509F).withValues(alpha: 0.1),
             child: Padding(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(32),
               child: Column(
                 children: [
                   // Avatar with edit button
@@ -242,15 +290,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       GestureDetector(
                         onTap: _showImageSourceDialog,
                         child: Container(
-                          width: 100,
-                          height: 100,
+                          width: 120,
+                          height: 120,
                           decoration: BoxDecoration(
-                            color: cs.surface,
+                            color: Colors.white,
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: cs.error.withValues(alpha: 0.1),
-                              width: 3,
+                              color: const Color(0xFF83509F),
+                              width: 4,
                             ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF83509F)
+                                    .withValues(alpha: 0.3),
+                                blurRadius: 20,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
                             image: _avatarImage != null
                                 ? DecorationImage(
                                     image: MemoryImage(_avatarImage!),
@@ -259,11 +315,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 : null,
                           ),
                           child: _avatarImage == null
-                              ? Icon(
+                              ? const Icon(
                                   Icons.person,
-                                  size: 50,
-                                  color:
-                                      cs.errorContainer.withValues(alpha: 0.3),
+                                  size: 60,
+                                  color: Color(0xFF83509F),
                                 )
                               : null,
                         ),
@@ -274,70 +329,77 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: GestureDetector(
                           onTap: _showImageSourceDialog,
                           child: Container(
-                            width: 32,
-                            height: 32,
+                            width: 40,
+                            height: 40,
                             decoration: BoxDecoration(
-                              color: cs.primary,
+                              color: const Color(0xFF83509F),
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: cs.surface,
-                                width: 2,
+                                color: Colors.white,
+                                width: 3,
                               ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.2),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
                             ),
-                            child: Icon(
+                            child: const Icon(
                               Icons.camera_alt,
-                              size: 16,
-                              color: cs.onPrimary,
+                              size: 20,
+                              color: Colors.white,
                             ),
                           ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 24),
                   // Username
                   Text(
                     _userData?['Username']?.toString() ?? widget.username,
-                    style: tt.headlineSmall?.copyWith(
+                    style: tt.headlineMedium?.copyWith(
                       fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  // Role Badge
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: isAdmin
-                          ? cs.tertiaryContainer
-                          : cs.secondaryContainer,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      isAdmin ? 'ADMIN' : 'USER',
-                      style: tt.labelMedium?.copyWith(
-                        color: isAdmin
-                            ? cs.onTertiaryContainer
-                            : cs.onSecondaryContainer,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      color: const Color(0xFF83509F),
                     ),
                   ),
                   const SizedBox(height: 12),
+                  // Role Badge
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isAdmin
+                          ? const Color(0xFF83509F)
+                          : const Color(0xFFA88BBD),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Text(
+                      isAdmin ? 'ADMIN' : 'USER',
+                      style: tt.labelLarge?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   // Member since
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
                         Icons.calendar_today,
-                        size: 14,
-                        color: cs.onPrimaryContainer.withValues(alpha: 0.7),
+                        size: 16,
+                        color: const Color(0xFF83509F),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 8),
                       Text(
                         'Member since ${_formatDate(_userData?['CreatedAt'])}',
                         style: tt.bodyMedium?.copyWith(
-                          color: cs.onPrimaryContainer.withValues(alpha: 0.7),
+                          color: Colors.grey[600],
                         ),
                       ),
                     ],
@@ -348,11 +410,68 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 16),
 
+          // Account Info Section
+          _buildSectionHeader(cs, tt, 'Account Info', Icons.info_outline),
+          const SizedBox(height: 8),
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Column(
+              children: [
+                _buildInfoTile(
+                  icon: Icons.account_circle,
+                  label: 'Username',
+                  value: _userData?['Username']?.toString() ?? widget.username,
+                ),
+                const Divider(height: 1),
+                _buildInfoTile(
+                  icon: Icons.admin_panel_settings,
+                  label: 'Role',
+                  value: _userData?['Role']?.toString() ??
+                      _userData?['role']?.toString() ??
+                      _userData?['RoleName']?.toString() ??
+                      _userData?['roleName']?.toString() ??
+                      'User',
+                ),
+                const Divider(height: 1),
+                _buildInfoTile(
+                  icon: Icons.toggle_on,
+                  label: 'Status',
+                  value: _userData?['Status']?.toString() ?? 'Active',
+                  valueColor:
+                      (_userData?['Status']?.toString() ?? 'Active') == 'Active'
+                          ? Colors.green
+                          : Colors.orange,
+                ),
+                const Divider(height: 1),
+                _buildInfoTile(
+                  icon: Icons.calendar_today,
+                  label: 'Created',
+                  value: _formatDate(_userData?['CreatedAt']),
+                ),
+                const Divider(height: 1),
+                _buildInfoTile(
+                  icon: Icons.verified_user,
+                  label: '2FA Status',
+                  value: is2FAEnabled ? 'Enabled' : 'Disabled',
+                  valueColor: is2FAEnabled ? Colors.green : cs.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
           // Account Settings Section
           _buildSectionHeader(
               cs, tt, 'Account Settings', Icons.manage_accounts),
           const SizedBox(height: 8),
-          Card.outlined(
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
             child: Column(
               children: [
                 _buildListTile(
@@ -402,7 +521,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     MaterialPageRoute(
                         builder: (_) =>
                             TwoFactorSetupScreen(username: widget.username)),
-                  ),
+                  ).then((_) => _loadUserData()),
                 ),
                 const Divider(height: 1),
                 _buildListTile(
@@ -419,55 +538,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 16),
-
-          // Account Info Section
-          _buildSectionHeader(cs, tt, 'Account Info', Icons.info_outline),
-          const SizedBox(height: 8),
-          Card.outlined(
-            child: Column(
-              children: [
-                _buildInfoTile(
-                  icon: Icons.account_circle,
-                  label: 'Username',
-                  value: _userData?['Username']?.toString() ?? widget.username,
-                ),
-                const Divider(height: 1),
-                _buildInfoTile(
-                  icon: Icons.admin_panel_settings,
-                  label: 'Role',
-                  value: _userData?['Role']?.toString() ??
-                      _userData?['role']?.toString() ??
-                      _userData?['RoleName']?.toString() ??
-                      _userData?['roleName']?.toString() ??
-                      'User',
-                ),
-                const Divider(height: 1),
-                _buildInfoTile(
-                  icon: Icons.toggle_on,
-                  label: 'Status',
-                  value: _userData?['Status']?.toString() ?? 'Active',
-                  valueColor:
-                      (_userData?['Status']?.toString() ?? 'Active') == 'Active'
-                          ? Colors.green
-                          : Colors.orange,
-                ),
-                const Divider(height: 1),
-                _buildInfoTile(
-                  icon: Icons.calendar_today,
-                  label: 'Created',
-                  value: _formatDate(_userData?['CreatedAt']),
-                ),
-                const Divider(height: 1),
-                _buildInfoTile(
-                  icon: Icons.verified_user,
-                  label: '2FA Status',
-                  value: is2FAEnabled ? 'Enabled' : 'Disabled',
-                  valueColor: is2FAEnabled ? Colors.green : cs.onSurfaceVariant,
-                ),
-              ],
-            ),
-          ),
           const SizedBox(height: 32),
         ],
       ),
@@ -478,13 +548,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ColorScheme cs, TextTheme tt, String title, IconData icon) {
     return Row(
       children: [
-        Icon(icon, size: 18, color: cs.primary),
-        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF83509F).withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, size: 20, color: const Color(0xFF83509F)),
+        ),
+        const SizedBox(width: 12),
         Text(
           title,
-          style: tt.titleSmall?.copyWith(
+          style: tt.titleMedium?.copyWith(
             fontWeight: FontWeight.bold,
-            color: cs.primary,
+            color: const Color(0xFF83509F),
           ),
         ),
       ],
@@ -499,10 +576,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required VoidCallback onTap,
   }) {
     return ListTile(
-      leading: Icon(icon),
-      title: Text(title),
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF83509F).withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(icon, color: const Color(0xFF83509F)),
+      ),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
       subtitle: Text(subtitle),
-      trailing: trailing ?? const Icon(Icons.chevron_right),
+      trailing:
+          trailing ?? const Icon(Icons.chevron_right, color: Color(0xFF83509F)),
       onTap: onTap,
     );
   }
